@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cabin Bus — System Findings & Control Notes</title>
+<style>
+  :root{
+    --bg:#0f1419; --panel:#171e26; --panel2:#1d2630; --ink:#e6edf3; --muted:#9aa7b3;
+    --accent:#4fb0ff; --accent2:#ffd166; --good:#5ad19b; --bad:#ff6b6b; --line:#2b3744;
+    --mono:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  .wrap{max-width:980px;margin:0 auto;padding:32px 22px 90px}
+  h1{font-size:30px;margin:0 0 4px}
+  h2{font-size:22px;margin:42px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+  h3{font-size:17px;margin:26px 0 8px;color:var(--accent)}
+  p{margin:10px 0}
+  .sub{color:var(--muted);margin:0 0 22px}
+  a{color:var(--accent)}
+  code,kbd{font-family:var(--mono);background:#0b0f14;border:1px solid var(--line);
+    border-radius:5px;padding:1px 6px;font-size:13.5px}
+  pre{background:#0b0f14;border:1px solid var(--line);border-radius:10px;padding:14px 16px;
+    overflow:auto;font-family:var(--mono);font-size:13px;line-height:1.55}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin:14px 0}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:760px){.grid2{grid-template-columns:1fr}}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--accent2);font-weight:600;font-size:12.5px;text-transform:uppercase;letter-spacing:.04em}
+  tr:hover td{background:#11171e}
+  .tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:20px;border:1px solid var(--line);color:var(--muted)}
+  .ok{color:var(--good)} .warn{color:var(--accent2)} .no{color:var(--bad)}
+  .callout{border-left:3px solid var(--accent);background:var(--panel2);border-radius:0 10px 10px 0;padding:12px 16px;margin:14px 0}
+  .callout.warn{border-left-color:var(--accent2)}
+  .callout.bad{border-left-color:var(--bad)}
+  .mono{font-family:var(--mono);font-size:13px}
+  .kvs{font-size:14px}
+  .kvs td:first-child{color:var(--muted);width:200px}
+  figure{margin:18px 0}
+  figcaption{color:var(--muted);font-size:13px;margin-top:6px;text-align:center}
+  .pill{font-family:var(--mono);font-size:12px;background:#0b0f14;border:1px solid var(--line);border-radius:6px;padding:1px 7px}
+  .toc{columns:2;column-gap:30px;font-size:14px}
+  .toc a{display:block;padding:2px 0;text-decoration:none}
+  footer{color:var(--muted);font-size:12.5px;margin-top:40px;border-top:1px solid var(--line);padding-top:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>🚌 Cabin Bus — System Findings &amp; Control Notes</h1>
+  <p class="sub">Reverse-engineered from the Raspberry Pi filesystem dump · single-file reference · everything you need to turn the lights on (and more) without the original hub.</p>
+
+  <div class="panel">
+    <strong>TL;DR</strong>
+    <ul>
+      <li>This was a <strong>Cabin</strong> luxury overnight <em>sleeper bus</em>. Each sleeping berth ("cabin") has its own Raspberry Pi controlling its lights.</li>
+      <li>A central <strong>HubPi</strong> coordinated them over the bus network; this dump is from that HubPi.</li>
+      <li><strong>You don't need the hub.</strong> The control script talks straight to each cabin Pi's light pins over SSH and <em>replaces</em> the hub entirely.</li>
+      <li>Way in: a recovered SSH key (now at <code>~/.ssh/cabin_key</code>) + the bus's wired Ethernet. No Wi-Fi password required.</li>
+      <li>Tooling delivered: <code>~/Desktop/bus-lights.command</code> (offline control) &amp; this page.</li>
+    </ul>
+  </div>
+
+  <div class="panel toc">
+    <a href="#what">1 · What the system is</a>
+    <a href="#arch">2 · Architecture</a>
+    <a href="#flow">3 · How a light turns on</a>
+    <a href="#access">4 · Access &amp; credentials</a>
+    <a href="#wifi">5 · Wi-Fi networks</a>
+    <a href="#cabins">6 · Cabin inventory</a>
+    <a href="#lights">7 · Light channel map</a>
+    <a href="#scenes">8 · Scene vocabulary</a>
+    <a href="#script">9 · The control script</a>
+    <a href="#caveats">10 · Caveats &amp; unknowns</a>
+  </div>
+
+  <h2 id="what">1 · What the system is</h2>
+  <p>The shared code library is literally named <code>cabin-javascript-library</code>; the Pis are named <code>CabinPi-&lt;serial&gt;</code>; berths are numbered like a coach (<span class="pill">1A</span>–<span class="pill">6D</span>, driver/passenger sides); and the software talks about <em>vehicle scenes</em>, <em>guest scenes</em>, and an <em>emergency</em> state. This is the <strong>Cabin</strong> overnight bus (the SF↔LA "moving hotel," ~2017–2019).</p>
+  <p>The lighting was one feature of a whole-vehicle system. The hub also did fleet telemetry: an <span class="pill">IMU</span> / accelerometer for ride-quality &amp; bump logging (<code>bumpLogging/</code>, <code>YostDataParser</code>), and <span class="pill">CradlePoint</span> cellular-router status (onboard Wi-Fi + LTE). So the Pi network delivered guest lighting, crew control, emergency lighting, onboard internet, and remote management — which is why it isn't "just a light switch."</p>
+
+  <h2 id="arch">2 · Architecture</h2>
+  <figure>
+  <svg viewBox="0 0 920 430" width="100%" role="img" aria-label="System architecture diagram" font-family="-apple-system,Segoe UI,Roboto,sans-serif">
+    <defs>
+      <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+        <path d="M0,0 L7,3 L0,6 Z" fill="#9aa7b3"/>
+      </marker>
+      <style>
+        .box{fill:#1d2630;stroke:#2b3744;rx:10}
+        .lbl{fill:#e6edf3;font-size:14px;font-weight:600}
+        .s{fill:#9aa7b3;font-size:11.5px}
+        .edge{stroke:#9aa7b3;stroke-width:1.6;fill:none;marker-end:url(#ar)}
+        .you{fill:#13202b;stroke:#4fb0ff}
+        .hub{fill:#241f12;stroke:#ffd166}
+      </style>
+    </defs>
+
+    <!-- Mac -->
+    <rect class="box you" x="20" y="170" width="170" height="78" rx="10"/>
+    <text class="lbl" x="105" y="200" text-anchor="middle">Your MacBook</text>
+    <text class="s" x="105" y="220" text-anchor="middle">bus-lights.command</text>
+    <text class="s" x="105" y="236" text-anchor="middle">+ ~/.ssh/cabin_key</text>
+
+    <!-- CradlePoint -->
+    <rect class="box" x="250" y="165" width="160" height="90" rx="10"/>
+    <text class="lbl" x="330" y="195" text-anchor="middle">CradlePoint</text>
+    <text class="s" x="330" y="214" text-anchor="middle">router / switch</text>
+    <text class="s" x="330" y="230" text-anchor="middle">LAN 10.101.1.0/24</text>
+    <text class="s" x="330" y="246" text-anchor="middle">Wi-Fi + LTE</text>
+
+    <!-- Hub -->
+    <rect class="box hub" x="470" y="40" width="180" height="92" rx="10"/>
+    <text class="lbl" x="560" y="68" text-anchor="middle">HubPi  (this dump)</text>
+    <text class="s" x="560" y="88" text-anchor="middle">hubd · node hub</text>
+    <text class="s" x="560" y="104" text-anchor="middle">socket.io :8000</text>
+    <text class="s" x="560" y="120" text-anchor="middle">scenes · telemetry · UI</text>
+
+    <!-- Cabin Pis -->
+    <rect class="box" x="470" y="170" width="180" height="92" rx="10"/>
+    <text class="lbl" x="560" y="198" text-anchor="middle">Cabin Pis ×22</text>
+    <text class="s" x="560" y="218" text-anchor="middle">lightd · GPIO/PWM</text>
+    <text class="s" x="560" y="234" text-anchor="middle">1A…6D, key-only SSH</text>
+    <text class="s" x="560" y="250" text-anchor="middle">pi · NOPASSWD sudo</text>
+
+    <!-- Lights -->
+    <rect class="box" x="710" y="150" width="180" height="132" rx="10"/>
+    <text class="lbl" x="800" y="178" text-anchor="middle">Cabin fixtures</text>
+    <text class="s" x="800" y="200" text-anchor="middle">valence · hall · step</text>
+    <text class="s" x="800" y="216" text-anchor="middle">reading · RGB sign</text>
+    <text class="s" x="800" y="232" text-anchor="middle">nightstand buttons</text>
+    <text class="s" x="800" y="254" text-anchor="middle">(1-Wire DS2408)</text>
+
+    <!-- edges -->
+    <path class="edge" d="M190,209 L248,209"/>
+    <path class="edge" d="M410,200 L468,150"/>
+    <path class="edge" d="M410,212 L468,212"/>
+    <path class="edge" d="M650,212 L708,212"/>
+    <path class="edge" d="M560,132 L560,168" stroke-dasharray="4 4"/>
+    <text class="s" x="205" y="200">SSH</text>
+    <text class="s" x="612" y="150" transform="rotate(0)">socket.io</text>
+    <text class="s" x="560" y="156" text-anchor="middle">hub↔cabin (optional)</text>
+  </svg>
+  <figcaption>The script (blue) drives the cabin Pis directly via SSH through the LAN. The dashed hub↔cabin link is the <em>original</em> path — not required for the script.</figcaption>
+  </figure>
+
+  <h2 id="flow">3 · How a light turns on</h2>
+  <div class="grid2">
+    <div class="panel">
+      <h3 style="margin-top:4px">Original path (hub-driven)</h3>
+      <ol class="mono" style="font-size:13px;line-height:1.7;padding-left:18px">
+        <li>Crew/UI picks a scene on the hub</li>
+        <li>Hub socket.io <strong>pushes</strong> event → cabin <code>lightd</code></li>
+        <li><code>hub.js</code> dispatches into a Redux store</li>
+        <li>store → computed per-light brightness</li>
+        <li><code>LightChannel</code> → <code>pigpio</code> PWM on GPIO</li>
+        <li>LED driver channels → fixtures (smooth fade)</li>
+      </ol>
+    </div>
+    <div class="panel">
+      <h3 style="margin-top:4px">Your path (script, no hub)</h3>
+      <ol class="mono" style="font-size:13px;line-height:1.7;padding-left:18px">
+        <li><code>bus-lights.command</code> on your Mac</li>
+        <li>SSH to a cabin Pi with <code>cabin_key</code></li>
+        <li>stop <code>lightd</code> · start <code>pigpiod</code></li>
+        <li><code>pigs w/p &lt;pin&gt; …</code> sets the channel</li>
+        <li>LED driver channels → fixtures</li>
+      </ol>
+      <p class="s" style="margin:6px 0 0">Same final two steps — we just skip the hub, sockets, and Redux.</p>
+    </div>
+  </div>
+  <p>Lights can also be toggled <strong>locally</strong> at the berth: a nightstand button panel (Dallas <span class="pill">DS2408</span> 1-Wire chip) plus a redundant button feed the same store; the daemon reports the guest's choice back to the hub.</p>
+
+  <h2 id="access">4 · Access &amp; credentials</h2>
+  <table class="kvs">
+    <tr><td>SSH auth</td><td><span class="no">Password login disabled</span> (<code>PasswordAuthentication no</code>) — key only.</td></tr>
+    <tr><td>Master key</td><td><code>pi@HubPi</code> private key, <span class="ok">unencrypted</span>, authorized on every cabin (the hub used it to control them). Recovered to <code>~/.ssh/cabin_key</code> (chmod 600).</td></tr>
+    <tr><td>Login user</td><td><code>pi</code>, with <span class="warn">passwordless sudo</span> (<code>NOPASSWD: ALL</code>).</td></tr>
+    <tr><td><code>pi</code> password</td><td>Stored only as a hash (sha512crypt) — irrelevant for SSH; would only matter for a keyboard/HDMI console login.</td></tr>
+    <tr><td>On-bus network</td><td>Wired Ethernet, <code>10.101.1.0/24</code> (per <code>find-local-cabin-pis.sh</code>). Warehouse base was <code>10.0.1.0/24</code>.</td></tr>
+    <tr><td>Name resolution</td><td>Pis advertise <code>CabinPi-&lt;serial&gt;.local</code> via Bonjour/mDNS — macOS resolves this natively, no setup.</td></tr>
+    <tr><td>Hostname (this Pi)</td><td><code>HubPi</code></td></tr>
+  </table>
+  <div class="callout"><strong>The one-liner once you're on the bus LAN:</strong>
+  <pre>ssh -i ~/.ssh/cabin_key pi@CabinPi-00000000782f1a1b.local   # cabin 1A</pre></div>
+
+  <h2 id="wifi">5 · Wi-Fi networks</h2>
+  <h3>Networks this Pi connected <em>out</em> to (from <code>wpa_supplicant.conf</code>, plaintext)</h3>
+  <table>
+    <tr><th>SSID</th><th>Password</th><th>Note</th></tr>
+    <tr><td>TwillTech</td><td class="mono">[stored in password manager]</td><td>office/dev</td></tr>
+    <tr><td>100 Stanford</td><td class="mono">[stored in password manager]</td><td>office/dev</td></tr>
+    <tr><td>JFK</td><td class="mono">[stored in password manager]</td><td>warehouse</td></tr>
+  </table>
+  <h3>Networks the <em>bus</em> broadcasts (hosted by the CradlePoint, <span class="no">not</span> in this dump)</h3>
+  <table>
+    <tr><th>SSID</th><th>Password</th><th>Note</th></tr>
+    <tr><td>ridecabin</td><td class="mono">[stored in password manager]</td><td>Guest Wi-Fi (you have this). May be isolated from the Pi LAN.</td></tr>
+    <tr><td>cabinsecurity-midnight / AP22-Midnight-Back</td><td class="no">unknown</td><td>Back-of-house network the Pis join. Password lives in the CradlePoint config, not on any Pi.</td></tr>
+  </table>
+  <div class="callout warn">You don't need either Wi-Fi password — use <strong>wired Ethernet</strong>. If you ever need the back network, factory-reset the CradlePoint (default admin is usually on its sticker or <code>admin</code> / last-8-of-MAC).</div>
+
+  <h2 id="cabins">6 · Cabin inventory</h2>
+  <p class="s">22 cabins (note: no 3A/3B in the fleet). Hostnames &amp; MACs from the dump's <code>.ssh/config</code> and <code>~/known</code>.</p>
+  <table class="mono" style="font-size:12.5px">
+    <tr><th>Cabin</th><th>Hostname (.local)</th><th>MAC</th><th>Cabin</th><th>Hostname (.local)</th><th>MAC</th></tr>
+    <tr><td>1A</td><td>CabinPi-00000000782f1a1b</td><td>b8:27:eb:7a:4f:4e</td><td>4A</td><td>CabinPi-00000000de34fdd0</td><td>b8:27:eb:61:a8:85</td></tr>
+    <tr><td>1B</td><td>CabinPi-00000000afd27059</td><td>b8:27:eb:87:25:0c</td><td>4B</td><td>CabinPi-00000000da027787</td><td>b8:27:eb:57:22:d2</td></tr>
+    <tr><td>1C</td><td>CabinPi-0000000024b80351</td><td>b8:27:eb:ed:56:04</td><td>4C</td><td>CabinPi-00000000e0b3c39f</td><td>b8:27:eb:e6:96:ca</td></tr>
+    <tr><td>1D</td><td>CabinPi-0000000015124b46</td><td>b8:27:eb:47:1e:13</td><td>4D</td><td>CabinPi-0000000035a148e7</td><td>b8:27:eb:f4:1d:b2</td></tr>
+    <tr><td>2A</td><td>CabinPi-00000000e42c0320</td><td>b8:27:eb:79:56:75</td><td>5A</td><td>CabinPi-0000000074fc3071</td><td>b8:27:eb:a9:65:24</td></tr>
+    <tr><td>2B</td><td>CabinPi-000000004afb8635</td><td>b8:27:eb:ae:d3:60</td><td>5B</td><td>CabinPi-000000008cf778aa</td><td>b8:27:eb:a2:2d:ff</td></tr>
+    <tr><td>2C</td><td>CabinPi-000000001c6caf7b</td><td>b8:27:eb:39:fa:2e</td><td>5C</td><td>CabinPi-000000008c47d590</td><td>b8:27:eb:12:80:c5</td></tr>
+    <tr><td>2D</td><td>CabinPi-00000000b4b65716</td><td>b8:27:eb:e3:02:43</td><td>5D</td><td>CabinPi-00000000b046a887</td><td>b8:27:eb:13:fd:d2</td></tr>
+    <tr><td>3C</td><td>CabinPi-00000000f845c885</td><td>b8:27:eb:10:9d:d0</td><td>6A</td><td>CabinPi-00000000b58ba1e8</td><td>b8:27:eb:de:f4:bd</td></tr>
+    <tr><td>3D</td><td>CabinPi-0000000014e5a30a</td><td>b8:27:eb:b0:f6:5f</td><td>6B</td><td>CabinPi-0000000045364ece</td><td>b8:27:eb:63:1b:9b</td></tr>
+    <tr><td></td><td></td><td></td><td>6C</td><td>CabinPi-000000000ad5fbf1</td><td>b8:27:eb:80:ae:a4</td></tr>
+    <tr><td></td><td></td><td></td><td>6D</td><td>CabinPi-000000001b4607aa</td><td>b8:27:eb:13:52:ff</td></tr>
+  </table>
+
+  <h2 id="lights">7 · Light channel map</h2>
+  <p class="s">Per cabin, from <code>lightd/daemon/LightMap.js</code>. White channels are PWM-dimmable; the "sign" is an RGB light. BCM (Broadcom) GPIO numbering.</p>
+  <div class="grid2">
+    <table>
+      <tr><th>Light</th><th>GPIO</th><th>Type</th></tr>
+      <tr><td>Reading / "backpack"</td><td class="mono">5</td><td>white</td></tr>
+      <tr><td>Hall floor</td><td class="mono">11</td><td>white</td></tr>
+      <tr><td>Hall ceiling</td><td class="mono">9</td><td>white</td></tr>
+      <tr><td>Step / footwell</td><td class="mono">10</td><td>white</td></tr>
+      <tr><td>Valence — bottom distal</td><td class="mono">6</td><td>white</td></tr>
+      <tr><td>Valence — bottom proximal</td><td class="mono">19</td><td>white</td></tr>
+      <tr><td>Valence — top proximal</td><td class="mono">13</td><td>white</td></tr>
+      <tr><td>Valence — top distal</td><td class="mono">16</td><td>white</td></tr>
+      <tr><td>Sign (RGB)</td><td class="mono">21 / 20 / 26</td><td>R/G/B</td></tr>
+      <tr><td>Nightstand buttons + "cloud"</td><td class="mono">1-Wire</td><td>DS2408</td></tr>
+      <tr><td>Stop / redundant button</td><td class="mono">22 / 27</td><td>input</td></tr>
+    </table>
+    <figure style="margin:0">
+    <svg viewBox="0 0 360 300" width="100%" role="img" aria-label="Cabin light layout">
+      <rect x="10" y="10" width="340" height="280" rx="14" fill="#1d2630" stroke="#2b3744"/>
+      <!-- valence top -->
+      <rect x="40" y="34" width="280" height="14" rx="7" fill="#3a4658"/>
+      <text x="180" y="28" text-anchor="middle" fill="#9aa7b3" font-size="11">valence top · GPIO 13 / 16</text>
+      <!-- valence bottom -->
+      <rect x="40" y="250" width="280" height="14" rx="7" fill="#3a4658"/>
+      <text x="180" y="282" text-anchor="middle" fill="#9aa7b3" font-size="11">valence bottom · GPIO 6 / 19</text>
+      <!-- reading light -->
+      <circle cx="300" cy="110" r="13" fill="#ffd166"/>
+      <text x="300" y="140" text-anchor="middle" fill="#9aa7b3" font-size="10">reading · 5</text>
+      <!-- hall -->
+      <rect x="46" y="100" width="14" height="90" rx="7" fill="#3a4658"/>
+      <text x="53" y="210" text-anchor="middle" fill="#9aa7b3" font-size="10">hall</text>
+      <text x="53" y="222" text-anchor="middle" fill="#9aa7b3" font-size="10">9 / 11</text>
+      <!-- RGB sign -->
+      <rect x="150" y="120" width="60" height="34" rx="6" fill="#4fb0ff"/>
+      <text x="180" y="142" text-anchor="middle" fill="#0b0f14" font-size="11" font-weight="700">RGB sign</text>
+      <text x="180" y="170" text-anchor="middle" fill="#9aa7b3" font-size="10">21 / 20 / 26</text>
+      <!-- step -->
+      <rect x="120" y="226" width="120" height="10" rx="5" fill="#3a4658"/>
+      <text x="180" y="222" text-anchor="middle" fill="#9aa7b3" font-size="10">step · GPIO 10</text>
+      <!-- nightstand -->
+      <rect x="250" y="200" width="70" height="40" rx="6" fill="#241f12" stroke="#ffd166"/>
+      <text x="285" y="224" text-anchor="middle" fill="#ffd166" font-size="10">nightstand</text>
+    </svg>
+    <figcaption>Approx. fixture layout (mapping mirrors by side of bus — see caveats).</figcaption>
+    </figure>
+  </div>
+  <p class="s">Brightness uses an exponential curve (perceived 0–100% → PWM 0–255), e.g. 25% → PWM 4, 50% → PWM 16, matching <code>LightChannel.js</code>. The script reproduces this curve.</p>
+
+  <h2 id="scenes">8 · Scene vocabulary (the hub's "central options")</h2>
+  <table>
+    <tr><th>Type</th><th>Scene</th><th>Code value</th><th>Original intent</th></tr>
+    <tr><td>Vehicle</td><td>Check-In</td><td class="mono">CheckIn</td><td>Guests begin boarding (PM)</td></tr>
+    <tr><td>Vehicle</td><td>Departure</td><td class="mono">Departure</td><td>Doors closed, live trip (PM)</td></tr>
+    <tr><td>Vehicle</td><td>Check Out</td><td class="mono">CheckOutBegin</td><td>Initial check-out warning (AM)</td></tr>
+    <tr><td>Vehicle</td><td>Final Check Out</td><td class="mono">CheckOutFinal</td><td>10-minute warning (AM)</td></tr>
+    <tr><td>Vehicle</td><td>Emergency</td><td class="mono">Emergency</td><td>Code-red — overrides everything</td></tr>
+    <tr><td>Vehicle</td><td>All Off</td><td class="mono">AllOff</td><td>Everything off</td></tr>
+    <tr><td>Guest</td><td>Cabin / Dim / Reading / Night / Off</td><td class="mono">Cabin…</td><td>Per-berth guest presets</td></tr>
+  </table>
+  <p class="s">The script ships equivalents: <code>checkin departure checkout final night reading dim relax off emergency</code>. These reproduce the <em>intent</em> using the real channels (exact factory brightness tables were compiled into the library — see caveats).</p>
+
+  <h2 id="script">9 · The control script — <code>~/Desktop/bus-lights.command</code></h2>
+  <div class="callout"><strong>It replaces the hub.</strong> The hub does <u>not</u> need to be running. The script SSHes to each cabin Pi, momentarily stops that cabin's <code>lightd</code> so it can take the GPIO, and drives the pins directly. Use <code>restore</code> to hand control back to the daemon later.</div>
+  <p>Double-click in Finder for a menu, or run from Terminal:</p>
+  <pre>./bus-lights.command                 # interactive menu
+./bus-lights.command discover        # which cabins are reachable
+./bus-lights.command on all          # every cabin, all white lights full
+./bus-lights.command off 2B          # one cabin off
+./bus-lights.command dim all 25      # 25% everywhere
+./bus-lights.command scene all departure
+./bus-lights.command light 1A backpack 100   # just the reading light
+./bus-lights.command rgb all 255 0 0         # red sign everywhere
+./bus-lights.command emergency all   # all full + red
+./bus-lights.command reboot 4C
+./bus-lights.command restore all     # give GPIO back to the hub/daemon
+./bus-lights.command run all 'uptime'        # arbitrary command on every cabin</pre>
+  <table class="kvs">
+    <tr><td>Targets</td><td><code>all</code> (default) · a cabin label (<code>3D</code>) · a hostname · an IP</td></tr>
+    <tr><td>Wired vs Wi-Fi</td><td>default wired; <code>BUS_IFACE=wifi ./bus-lights.command …</code> uses the <code>-WiFi</code> names</td></tr>
+    <tr><td>Key location</td><td><code>~/.ssh/cabin_key</code> (auto-copied from the dump if missing)</td></tr>
+    <tr><td>Mechanism</td><td><code>pigpiod</code> + <code>pigs w/p &lt;pin&gt;</code> over SSH — same hardware path the daemon used</td></tr>
+  </table>
+
+  <h2 id="caveats">10 · Caveats &amp; unknowns</h2>
+  <ul>
+    <li><strong>Side-of-bus mirroring.</strong> <code>LightMap.js</code> swaps the four valence channels based on <code>isLeftSide</code>. The dumped copy has <code>isLeftSide=false</code>; the actual per-cabin value may differ, so "top/bottom/distal/proximal" labels could mirror on some berths. The <em>set</em> of pins is correct regardless; only the human labels may flip.</li>
+    <li><strong>Scene brightness is approximate.</strong> The exact factory levels live compiled inside <code>cabin-javascript-library</code> (abstract <code>LightLevel</code> constants) and weren't byte-for-byte extractable. Presets reproduce intent; tune numbers at the top of <code>scene_cmds()</code>.</li>
+    <li><strong>Nightstand "cloud" light + scene indicator LEDs</strong> are on the 1-Wire DS2408, not PWM GPIO — the script drives the main fixtures, not those indicator LEDs.</li>
+    <li><strong>cabinsecurity-midnight password is not recoverable</strong> from this dump (it's in the CradlePoint). Use Ethernet, or reset the router.</li>
+    <li><strong>Guest Wi-Fi (<code>ridecabin</code>) may be firewalled</strong> off the Pi management LAN. Wired Ethernet is the reliable path.</li>
+    <li><strong>mDNS reachability</strong> assumes Avahi is running on the cabin Pis (it is by default on this image). If a name won't resolve, scan the subnet (<code>nmap -p22 --open 10.101.1.0/24</code>, or <code>arp -a</code> + the MACs above) and SSH to the IP.</li>
+  </ul>
+
+  <footer>
+    Generated from the filesystem dump at <span class="mono">~/Desktop/bus-hub-files</span>. Companion tool: <span class="mono">~/Desktop/bus-lights.command</span>.
+    Credentials in this file are recovered from a device you own; treat this page as sensitive.
+  </footer>
+
+</div>
+</body>
+</html>

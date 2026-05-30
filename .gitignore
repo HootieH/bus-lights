@@ -1,0 +1,30 @@
+# ============================================================
+#  SECRETS — never commit. This repo is PUBLIC.
+# ============================================================
+# SSH keys / credentials
+*_key
+*_key.pub
+cabin_key*
+id_rsa*
+*.pem
+*.ppk
+
+# encrypted backups (keep these out of band, not in git)
+*.enc
+*.gpg
+
+# recovered credential dumps
+authorized_keys*
+wpa_supplicant*.conf
+secrets/
+*.secret
+
+# the full filesystem dump (huge + contains secrets)
+bus-hub-files/
+*-dump/
+
+# unscrubbed local copy of the writeup (the published bus.html is scrubbed)
+bus.full.html
+
+# OS cruft
+.DS_Store
