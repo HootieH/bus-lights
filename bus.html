@@ -220,6 +220,70 @@
     <tr><td></td><td></td><td></td><td>6D</td><td>CabinPi-000000001b4607aa</td><td>b8:27:eb:13:52:ff</td></tr>
   </table>
 
+  <h3>Layout / orientation</h3>
+  <p class="s">Rows run front→back (row 1 = front by the driver, row 6 = rear). <strong>A/B = driver side, C/D = passenger side</strong> (from the bus config). Row 3 has no A/B (galley/lav/entry). Within-side bunk arrangement (upper/lower vs fore/aft) is unconfirmed — drawn as a simple grid.</p>
+  <figure>
+  <svg viewBox="0 0 520 470" width="100%" style="max-width:520px;display:block;margin:0 auto" role="img" aria-label="Cabin layout map">
+    <defs><style>
+      .cab{fill:#1d2630;stroke:#2b3744}
+      .cl{fill:#e6edf3;font-size:13px;font-weight:600;font-family:var(--mono)}
+      .rl{fill:#9aa7b3;font-size:11px}
+      .hd{fill:#ffd166;font-size:12px;font-weight:600}
+      .none{fill:#11171e;stroke:#2b3744;stroke-dasharray:3 3}
+    </style></defs>
+    <text class="hd" x="260" y="20" text-anchor="middle">FRONT · driver console</text>
+    <text class="rl" x="125" y="40" text-anchor="middle">DRIVER SIDE</text>
+    <text class="rl" x="395" y="40" text-anchor="middle">PASSENGER SIDE</text>
+    <line x1="260" y1="28" x2="260" y2="440" stroke="#2b3744" stroke-dasharray="4 5"/>
+    <!-- rows -->
+    <!-- row template: two cabs each side -->
+    <!-- y per row -->
+    <!-- r1 -->
+    <g font-family="-apple-system">
+    <!-- generate rows -->
+    <!-- Row 1 -->
+    <rect class="cab" x="40"  y="52"  width="80" height="48" rx="6"/><text class="cl" x="80"  y="81" text-anchor="middle">1A</text>
+    <rect class="cab" x="130" y="52"  width="80" height="48" rx="6"/><text class="cl" x="170" y="81" text-anchor="middle">1B</text>
+    <rect class="cab" x="310" y="52"  width="80" height="48" rx="6"/><text class="cl" x="350" y="81" text-anchor="middle">1C</text>
+    <rect class="cab" x="400" y="52"  width="80" height="48" rx="6"/><text class="cl" x="440" y="81" text-anchor="middle">1D</text>
+    <text class="rl" x="260" y="81" text-anchor="middle">row 1</text>
+    <!-- Row 2 -->
+    <rect class="cab" x="40"  y="108" width="80" height="48" rx="6"/><text class="cl" x="80"  y="137" text-anchor="middle">2A</text>
+    <rect class="cab" x="130" y="108" width="80" height="48" rx="6"/><text class="cl" x="170" y="137" text-anchor="middle">2B</text>
+    <rect class="cab" x="310" y="108" width="80" height="48" rx="6"/><text class="cl" x="350" y="137" text-anchor="middle">2C</text>
+    <rect class="cab" x="400" y="108" width="80" height="48" rx="6"/><text class="cl" x="440" y="137" text-anchor="middle">2D</text>
+    <text class="rl" x="260" y="137" text-anchor="middle">row 2</text>
+    <!-- Row 3 (no A/B) -->
+    <rect class="none" x="40"  y="164" width="170" height="48" rx="6"/><text class="rl" x="125" y="192" text-anchor="middle">— (galley / lav)</text>
+    <rect class="cab" x="310" y="164" width="80" height="48" rx="6"/><text class="cl" x="350" y="193" text-anchor="middle">3C</text>
+    <rect class="cab" x="400" y="164" width="80" height="48" rx="6"/><text class="cl" x="440" y="193" text-anchor="middle">3D</text>
+    <text class="rl" x="260" y="193" text-anchor="middle">row 3</text>
+    <!-- Row 4 -->
+    <rect class="cab" x="40"  y="220" width="80" height="48" rx="6"/><text class="cl" x="80"  y="249" text-anchor="middle">4A</text>
+    <rect class="cab" x="130" y="220" width="80" height="48" rx="6"/><text class="cl" x="170" y="249" text-anchor="middle">4B</text>
+    <rect class="cab" x="310" y="220" width="80" height="48" rx="6"/><text class="cl" x="350" y="249" text-anchor="middle">4C</text>
+    <rect class="cab" x="400" y="220" width="80" height="48" rx="6"/><text class="cl" x="440" y="249" text-anchor="middle">4D</text>
+    <text class="rl" x="260" y="249" text-anchor="middle">row 4</text>
+    <!-- Row 5 -->
+    <rect class="cab" x="40"  y="276" width="80" height="48" rx="6"/><text class="cl" x="80"  y="305" text-anchor="middle">5A</text>
+    <rect class="cab" x="130" y="276" width="80" height="48" rx="6"/><text class="cl" x="170" y="305" text-anchor="middle">5B</text>
+    <rect class="cab" x="310" y="276" width="80" height="48" rx="6"/><text class="cl" x="350" y="305" text-anchor="middle">5C</text>
+    <rect class="cab" x="400" y="276" width="80" height="48" rx="6"/><text class="cl" x="440" y="305" text-anchor="middle">5D</text>
+    <text class="rl" x="260" y="305" text-anchor="middle">row 5</text>
+    <!-- Row 6 -->
+    <rect class="cab" x="40"  y="332" width="80" height="48" rx="6"/><text class="cl" x="80"  y="361" text-anchor="middle">6A</text>
+    <rect class="cab" x="130" y="332" width="80" height="48" rx="6"/><text class="cl" x="170" y="361" text-anchor="middle">6B</text>
+    <rect class="cab" x="310" y="332" width="80" height="48" rx="6"/><text class="cl" x="350" y="361" text-anchor="middle">6C</text>
+    <rect class="cab" x="400" y="332" width="80" height="48" rx="6"/><text class="cl" x="440" y="361" text-anchor="middle">6D</text>
+    <text class="rl" x="260" y="361" text-anchor="middle">row 6</text>
+    </g>
+    <text class="hd" x="260" y="400" text-anchor="middle">REAR</text>
+    <text class="rl" x="260" y="425" text-anchor="middle">tunnel sweeps row 1→6 · rows power-up colors: 1 red · 2 yellow · 3 green</text>
+    <text class="rl" x="260" y="441" text-anchor="middle">4 cyan · 5 blue · 6 magenta</text>
+  </svg>
+  <figcaption>22 cabins. Row/side from the bus config; bunk arrangement within a side is unconfirmed.</figcaption>
+  </figure>
+
   <h2 id="lights">7 · Light channel map</h2>
   <p class="s">Per cabin, from <code>lightd/daemon/LightMap.js</code>. White channels are PWM-dimmable; the "sign" is an RGB light. BCM (Broadcom) GPIO numbering.</p>
   <div class="grid2">
