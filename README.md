@@ -5,6 +5,7 @@ Raspberry Pis directly over SSH — **replaces the original hub** (no hub, no
 internet, no cloud required).
 
 > **Full technical writeup + diagrams:** open [`bus.html`](bus.html) in a browser.
+> **Redeploying on a new machine?** See [`RESTORE.md`](RESTORE.md). Secrets live in the **TE Notion**.
 
 ## ⚠️ Security note — read this
 This repo is intentionally **secret-free**. The thing that actually grants
